@@ -1,66 +1,50 @@
 #!/bin/bash
 
-# Constants
-SERVER_URL="http://localhost:8080"
+set -e
+
+echo "$(date) - Starting digest authentication process demo..."
+
 USERNAME="testuser"
-PASSWORD="testpass"
-REALM="realm"
-URI="/requested/uri"
-JWT_TOKEN=""
-LOG_FILE="digest_auth_demo.log"
+PASSWORD="testpassword"
+SERVER="http://localhost:8080"
 
-# Function to log messages
-log() {
-    echo "$(date +"%Y-%m-%d %H:%M:%S") - $1" | tee -a $LOG_FILE
-}
+echo "$(date) - Registering user..."
+REGISTER_RESPONSE=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"username\":\"$USERNAME\", \"password\":\"$PASSWORD\"}" "$SERVER/register")
+echo "$(date) - Response from register user: $REGISTER_RESPONSE"
+echo "$(date) - User registered."
 
-# Function to register a user
-register_user() {
-    log "Registering user..."
-    RESPONSE=$(curl -s -X POST "$SERVER_URL/register" -H "Content-Type: application/json" -d "{\"username\": \"$USERNAME\", \"password\": \"$PASSWORD\"}")
-    log "Response from register user: $RESPONSE"
-    log "User registered."
-}
+echo "$(date) - Getting nonce..."
+NONCE_RESPONSE=$(curl -s -G --data-urlencode "username=$USERNAME" "$SERVER/nonce")
+echo "$(date) - Nonce received: $NONCE_RESPONSE"
 
-# Function to get a nonce
-get_nonce() {
-    log "Getting nonce..."
-    NONCE=$(curl -s -G "$SERVER_URL/nonce" --data-urlencode "username=$USERNAME")
-    log "Nonce received: $NONCE"
-}
+NONCE=$(echo $NONCE_RESPONSE | jq -r '.nonce')
+if [ -z "$NONCE" ]; then
+    echo "$(date) - Failed to get nonce"
+    exit 1
+fi
 
-# Function to calculate the digest response
-calculate_response() {
-    log "Calculating response..."
-    HA1=$(echo -n "$USERNAME:$REALM:$PASSWORD" | md5sum | awk '{print $1}')
-    log "HA1: $HA1"
-    HA2=$(echo -n "GET:$URI" | md5sum | awk '{print $1}')
-    log "HA2: $HA2"
-    RESPONSE=$(echo -n "$HA1:$NONCE:$HA2" | md5sum | awk '{print $1}')
-    log "Response calculated: $RESPONSE"
-}
+echo "$(date) - Calculating response..."
+HA1=$(echo -n "$USERNAME:realm:$PASSWORD" | md5)
+HA2=$(echo -n "GET:/protected" | md5)
+RESPONSE=$(echo -n "$HA1:$NONCE:$HA2" | md5)
+echo "$(date) - HA1: $HA1"
+echo "$(date) - HA2: $HA2"
+echo "$(date) - Response calculated: $RESPONSE"
 
-# Function to authenticate the user
-authenticate_user() {
-    log "Authenticating user..."
-    RESPONSE=$(curl -s -X POST "$SERVER_URL/authenticate" -H "Content-Type: application/json" -d "{\"username\": \"$USERNAME\", \"nonce\": \"$NONCE\", \"uri\": \"$URI\", \"response\": \"$RESPONSE\"}")
-    log "Response from authenticate user: $RESPONSE"
-    JWT_TOKEN=$(echo $RESPONSE | jq -r '.token')
-    log "JWT Token received: $JWT_TOKEN"
-}
+echo "$(date) - Authenticating user..."
+AUTH_RESPONSE=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"username\":\"$USERNAME\", \"nonce\":\"$NONCE\", \"uri\":\"/protected\", \"response\":\"$RESPONSE\"}" "$SERVER/authenticate")
+echo "$(date) - Response from authenticate user: $AUTH_RESPONSE"
 
-# Function to get authenticated user information
-get_user_info() {
-    log "Getting user info..."
-    RESPONSE=$(curl -s -H "Authorization: Bearer $JWT_TOKEN" "$SERVER_URL/user")
-    log "Response from get user info: $RESPONSE"
-}
+TOKEN=$(echo $AUTH_RESPONSE | jq -r '.token')
+if [ -z "$TOKEN" ]; then
+    echo "$(date) - Failed to get JWT token"
+    exit 1
+fi
 
-# Main script execution
-log "Starting digest authentication process demo..."
-register_user
-get_nonce
-calculate_response
-authenticate_user
-get_user_info
-log "Digest authentication process demo completed."
+echo "$(date) - JWT Token received: $TOKEN"
+
+echo "$(date) - Getting user info..."
+USER_INFO_RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" "$SERVER/user")
+echo "$(date) - Response from get user info: $USER_INFO_RESPONSE"
+
+echo "$(date) - Digest authentication process demo completed."

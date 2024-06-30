@@ -1,6 +1,6 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use tokio_postgres::Row;
+use deadpool_postgres::tokio_postgres::Row;
 use bcrypt::{hash, DEFAULT_COST};
 use uuid::Uuid;
 use chrono::Utc;

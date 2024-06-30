@@ -1,5 +1,5 @@
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use tokio_postgres::NoTls;
+use deadpool_postgres::tokio_postgres::NoTls;
 
 #[derive(Clone)]
 pub struct AppState {
